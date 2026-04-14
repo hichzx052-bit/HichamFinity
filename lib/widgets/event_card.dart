@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../utils/theme.dart';
 import '../models/live_event.dart';
+import '../utils/theme.dart';
 
 class EventCard extends StatelessWidget {
   final LiveEvent event;
@@ -10,57 +10,48 @@ class EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: _getBackgroundColor(),
+        color: _getEventColor().withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _getEventColor().withValues(alpha: 0.15)),
       ),
       child: Row(
         children: [
-          Text(_getEmoji(), style: const TextStyle(fontSize: 18)),
+          Text(event.icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               event.description,
-              style: const TextStyle(fontSize: 14),
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           Text(
-            _formatTime(event.timestamp),
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+            '${event.timestamp.hour.toString().padLeft(2, '0')}:${event.timestamp.minute.toString().padLeft(2, '0')}',
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
           ),
         ],
       ),
     );
   }
 
-  Color _getBackgroundColor() {
+  Color _getEventColor() {
     switch (event.type) {
-      case LiveEventType.gift:
-        return AppTheme.gift.withOpacity(0.08);
-      case LiveEventType.like:
-        return AppTheme.like.withOpacity(0.06);
-      case LiveEventType.follow:
-        return AppTheme.success.withOpacity(0.08);
+      case 'gift':
+        return AppTheme.accentGold;
+      case 'like':
+        return AppTheme.primaryColor;
+      case 'follow':
+        return AppTheme.successColor;
+      case 'comment':
+        return AppTheme.secondaryColor;
+      case 'share':
+        return Colors.orangeAccent;
       default:
-        return AppTheme.surface;
+        return AppTheme.textMuted;
     }
-  }
-
-  String _getEmoji() {
-    switch (event.type) {
-      case LiveEventType.join: return '👁️';
-      case LiveEventType.gift: return '🎁';
-      case LiveEventType.like: return '❤️';
-      case LiveEventType.comment: return '💬';
-      case LiveEventType.follow: return '➕';
-      case LiveEventType.share: return '🔗';
-      case LiveEventType.subscribe: return '⭐';
-    }
-  }
-
-  String _formatTime(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
   }
 }

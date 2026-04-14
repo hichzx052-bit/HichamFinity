@@ -1,58 +1,58 @@
-import 'dart:async';
 import 'dart:collection';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import '../models/live_event.dart';
 
-/// خدمة Text-to-Speech — تقرأ الأحداث بصوت عالي
-class TtsService extends ChangeNotifier {
+/// خدمة TTS — تنطق الأسماء والأحداث مرة وحدة بس
+class TtsService {
   final FlutterTts _tts = FlutterTts();
-  final Queue<String> _queue = Queue();
+  final Queue<String> _queue = Queue<String>();
+  final Set<String> _recentlySpoken = {}; // منع التكرار
   bool _isSpeaking = false;
-  bool _enabled = true;
+  bool _isEnabled = true;
+  
+  // إعدادات
+  double rate = 0.5;
+  double pitch = 1.0;
+  double volume = 1.0;
+  String language = 'ar';
 
-  // إعدادات TTS
-  bool readJoins = true;        // يقرأ أسماء الداخلين
-  bool readGifts = true;        // يقرأ الهدايا
-  bool readComments = false;    // يقرأ التعليقات
-  bool readFollows = true;      // يقرأ المتابعين الجدد
-  bool readLikes = false;       // يقرأ اللايكات (كثير عادةً)
+  // أنواع الأحداث المفعّلة
+  bool speakJoins = true;
+  bool speakComments = true;
+  bool speakGifts = true;
+  bool speakFollows = true;
+  bool speakLikes = false; // اللايكات كثيرة — مقفل افتراضياً
 
-  double rate = 0.5;            // سرعة الكلام
-  double pitch = 1.0;           // حدة الصوت
-  String language = 'ar';       // اللغة
+  static const int _maxQueue = 10;
+  static const Duration _duplicateWindow = Duration(seconds: 30);
 
-  bool get enabled => _enabled;
-  bool get isSpeaking => _isSpeaking;
-
-  TtsService() {
-    _initTts();
-  }
-
-  Future<void> _initTts() async {
+  Future<void> init() async {
     await _tts.setLanguage(language);
     await _tts.setSpeechRate(rate);
     await _tts.setPitch(pitch);
+    await _tts.setVolume(volume);
 
     _tts.setCompletionHandler(() {
       _isSpeaking = false;
       _processQueue();
     });
+
+    _tts.setErrorHandler((msg) {
+      _isSpeaking = false;
+      _processQueue();
+    });
   }
 
-  void setEnabled(bool value) {
-    _enabled = value;
-    if (!value) {
-      _tts.stop();
-      _queue.clear();
-      _isSpeaking = false;
+  void setEnabled(bool enabled) {
+    _isEnabled = enabled;
+    if (!enabled) {
+      stop();
     }
-    notifyListeners();
   }
 
   Future<void> updateSettings({
     double? newRate,
     double? newPitch,
+    double? newVolume,
     String? newLanguage,
   }) async {
     if (newRate != null) {
@@ -63,93 +63,108 @@ class TtsService extends ChangeNotifier {
       pitch = newPitch;
       await _tts.setPitch(pitch);
     }
+    if (newVolume != null) {
+      volume = newVolume;
+      await _tts.setVolume(volume);
+    }
     if (newLanguage != null) {
       language = newLanguage;
       await _tts.setLanguage(language);
     }
-    notifyListeners();
   }
 
-  /// معالجة حدث جديد — يقرر إذا يقرأه ولا لا
-  void processEvent(LiveEvent event) {
-    if (!_enabled) return;
-
-    String? text;
-
-    switch (event.type) {
-      case LiveEventType.join:
-        if (readJoins) {
-          text = '${event.displayName ?? event.username} دخل البث';
-        }
-        break;
-      case LiveEventType.gift:
-        if (readGifts) {
-          text = '${event.displayName ?? event.username} أرسل ${event.giftName ?? "هدية"}';
-          if ((event.giftCount ?? 1) > 1) {
-            text += ' ضرب ${event.giftCount}';
-          }
-        }
-        break;
-      case LiveEventType.comment:
-        if (readComments) {
-          text = '${event.displayName ?? event.username} قال: ${event.message}';
-        }
-        break;
-      case LiveEventType.follow:
-        if (readFollows) {
-          text = '${event.displayName ?? event.username} تابعك! مرحباً فيه';
-        }
-        break;
-      case LiveEventType.like:
-        if (readLikes && (event.likeCount ?? 0) >= 10) {
-          text = '${event.displayName ?? event.username} أعجب ${event.likeCount} مرة';
-        }
-        break;
-      default:
-        break;
-    }
-
-    if (text != null) {
-      _addToQueue(text);
-    }
+  /// نطق حدث دخول
+  void speakJoin(String displayName) {
+    if (!speakJoins) return;
+    _enqueue('أهلاً $displayName');
   }
 
-  /// إضافة نص للطابور
-  void _addToQueue(String text) {
-    _queue.add(text);
-    // حد الطابور عشان ما يتراكم
-    while (_queue.length > 10) {
-      _queue.removeFirst();
+  /// نطق تعليق
+  void speakComment(String displayName, String comment) {
+    if (!speakComments) return;
+    _enqueue('$displayName يقول: $comment');
+  }
+
+  /// نطق هدية
+  void speakGift(String displayName, String giftName, int count) {
+    if (!speakGifts) return;
+    final text = count > 1
+        ? '$displayName أرسل $giftName ضرب $count'
+        : '$displayName أرسل $giftName';
+    _enqueue(text);
+  }
+
+  /// نطق متابعة
+  void speakFollow(String displayName) {
+    if (!speakFollows) return;
+    _enqueue('$displayName تابعك!');
+  }
+
+  /// نطق لايك
+  void speakLike(String displayName, int count) {
+    if (!speakLikes) return;
+    _enqueue('$displayName أعطاك $count لايك');
+  }
+
+  /// نطق نص مخصص
+  void speakCustom(String text) {
+    _enqueue(text);
+  }
+
+  /// نطق حدث "الأول" (أول متابع/معلق/مهدي)
+  void speakFirst(String type, String displayName) {
+    _enqueue('🏅 $displayName هو أول $type في البث!', priority: true);
+  }
+
+  void _enqueue(String text, {bool priority = false}) {
+    if (!_isEnabled) return;
+
+    // منع التكرار — نفس النص خلال 30 ثانية
+    if (_recentlySpoken.contains(text)) return;
+    _recentlySpoken.add(text);
+    Future.delayed(_duplicateWindow, () => _recentlySpoken.remove(text));
+
+    // حد أقصى للقائمة
+    if (_queue.length >= _maxQueue) {
+      if (!priority) return; // ما نضيف لو القائمة ممتلئة
+      _queue.removeFirst(); // نشيل الأقدم لو أولوية
     }
-    if (!_isSpeaking) {
-      _processQueue();
+
+    if (priority) {
+      // الأولوية — نحط بالأول
+      final list = _queue.toList();
+      list.insert(0, text);
+      _queue.clear();
+      list.forEach(_queue.add);
+    } else {
+      _queue.add(text);
     }
+
+    _processQueue();
   }
 
   void _processQueue() {
-    if (_queue.isEmpty || !_enabled) return;
+    if (_isSpeaking || _queue.isEmpty || !_isEnabled) return;
 
     final text = _queue.removeFirst();
     _isSpeaking = true;
     _tts.speak(text);
   }
 
-  /// نطق نص مباشر
-  Future<void> speak(String text) async {
-    if (!_enabled) return;
-    _addToQueue(text);
-  }
-
-  /// إيقاف الكلام
   Future<void> stop() async {
-    await _tts.stop();
     _queue.clear();
     _isSpeaking = false;
+    await _tts.stop();
   }
 
-  @override
-  void dispose() {
-    _tts.stop();
-    super.dispose();
+  Future<void> dispose() async {
+    await stop();
   }
+
+  Future<List<dynamic>> getAvailableLanguages() async {
+    return await _tts.getLanguages;
+  }
+
+  bool get isEnabled => _isEnabled;
+  int get queueLength => _queue.length;
 }

@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'utils/theme.dart';
 import 'services/tiktok_live_service.dart';
 import 'services/tts_service.dart';
 import 'services/trigger_service.dart';
 import 'screens/home_screen.dart';
+import 'utils/theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
+  
+  // شاشة كاملة + portrait فقط
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUIOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
   runApp(const HichamFinityApp());
 }
 
@@ -28,7 +30,7 @@ class HichamFinityApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => TikTokLiveService()),
-        ChangeNotifierProvider(create: (_) => TtsService()),
+        Provider(create: (_) => TtsService()),
         ChangeNotifierProvider(create: (_) => TriggerService()),
       ],
       child: MaterialApp(

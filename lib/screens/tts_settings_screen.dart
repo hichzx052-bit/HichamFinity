@@ -1,163 +1,173 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../utils/theme.dart';
 import '../services/tts_service.dart';
+import '../utils/theme.dart';
 
-class TtsSettingsScreen extends StatelessWidget {
+class TtsSettingsScreen extends StatefulWidget {
   const TtsSettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final tts = context.watch<TtsService>();
+  State<TtsSettingsScreen> createState() => _TtsSettingsScreenState();
+}
 
+class _TtsSettingsScreenState extends State<TtsSettingsScreen> {
+  late TtsService _tts;
+  List<dynamic> _languages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _tts = context.read<TtsService>();
+    _loadLanguages();
+  }
+
+  Future<void> _loadLanguages() async {
+    final langs = await _tts.getAvailableLanguages();
+    setState(() => _languages = langs);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('🗣️ إعدادات القراءة الصوتية'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // تفعيل/تعطيل
-          _buildCard(
-            child: SwitchListTile(
-              title: const Text('تفعيل القراءة الصوتية'),
-              subtitle: const Text('قراءة الأحداث بصوت عالي'),
-              value: tts.enabled,
-              activeColor: AppTheme.primary,
-              onChanged: (v) => tts.setEnabled(v),
-              secondary: Icon(
-                tts.enabled ? Icons.volume_up : Icons.volume_off,
-                color: tts.enabled ? AppTheme.primary : AppTheme.textSecondary,
+      appBar: AppBar(title: const Text('🎤 إعدادات الصوت')),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppTheme.backgroundColor, Color(0xFF0D0D1A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // تفعيل/تعطيل
+            _buildSection(
+              title: '🔊 التفعيل',
+              child: SwitchListTile(
+                title: const Text('تفعيل الأصوات', style: TextStyle(color: AppTheme.textPrimary)),
+                value: _tts.isEnabled,
+                activeColor: AppTheme.primaryColor,
+                onChanged: (v) {
+                  _tts.setEnabled(v);
+                  setState(() {});
+                },
               ),
             ),
-          ),
+            const SizedBox(height: 16),
 
-          const SizedBox(height: 16),
-          const Text('📋 وش يقرأ؟', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-
-          _buildCard(
-            child: Column(
-              children: [
-                _buildSwitch(
-                  title: 'أسماء الداخلين',
-                  subtitle: 'يقرأ اسم كل شخص يدخل البث',
-                  icon: Icons.person_add_rounded,
-                  value: tts.readJoins,
-                  onChanged: (v) {
-                    tts.readJoins = v;
-                    tts.notifyListeners();
-                  },
-                ),
-                const Divider(height: 1),
-                _buildSwitch(
-                  title: 'الهدايا',
-                  subtitle: 'يقرأ اسم المرسل ونوع الهدية',
-                  icon: Icons.card_giftcard_rounded,
-                  value: tts.readGifts,
-                  onChanged: (v) {
-                    tts.readGifts = v;
-                    tts.notifyListeners();
-                  },
-                ),
-                const Divider(height: 1),
-                _buildSwitch(
-                  title: 'التعليقات',
-                  subtitle: 'يقرأ كل تعليق (ممكن يكون كثير)',
-                  icon: Icons.chat_bubble_rounded,
-                  value: tts.readComments,
-                  onChanged: (v) {
-                    tts.readComments = v;
-                    tts.notifyListeners();
-                  },
-                ),
-                const Divider(height: 1),
-                _buildSwitch(
-                  title: 'المتابعين الجدد',
-                  subtitle: 'يقرأ اسم كل متابع جديد',
-                  icon: Icons.favorite_rounded,
-                  value: tts.readFollows,
-                  onChanged: (v) {
-                    tts.readFollows = v;
-                    tts.notifyListeners();
-                  },
-                ),
-                const Divider(height: 1),
-                _buildSwitch(
-                  title: 'اللايكات الكبيرة',
-                  subtitle: 'يقرأ لما أحد يعطي 10+ لايك دفعة',
-                  icon: Icons.thumb_up_rounded,
-                  value: tts.readLikes,
-                  onChanged: (v) {
-                    tts.readLikes = v;
-                    tts.notifyListeners();
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          const Text('🎛️ إعدادات الصوت', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-
-          _buildCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            // السرعة والنبرة والصوت
+            _buildSection(
+              title: '🎛️ التحكم بالصوت',
               child: Column(
                 children: [
-                  // سرعة الكلام
-                  Row(
-                    children: [
-                      const Icon(Icons.speed, color: AppTheme.primary),
-                      const SizedBox(width: 12),
-                      const Text('السرعة'),
-                      Expanded(
-                        child: Slider(
-                          value: tts.rate,
-                          min: 0.1,
-                          max: 1.0,
-                          divisions: 9,
-                          label: '${(tts.rate * 100).toInt()}%',
-                          activeColor: AppTheme.primary,
-                          onChanged: (v) => tts.updateSettings(newRate: v),
-                        ),
-                      ),
-                    ],
-                  ),
-                  // حدة الصوت
-                  Row(
-                    children: [
-                      const Icon(Icons.music_note, color: AppTheme.accent),
-                      const SizedBox(width: 12),
-                      const Text('الحدة'),
-                      Expanded(
-                        child: Slider(
-                          value: tts.pitch,
-                          min: 0.5,
-                          max: 2.0,
-                          divisions: 15,
-                          label: tts.pitch.toStringAsFixed(1),
-                          activeColor: AppTheme.accent,
-                          onChanged: (v) => tts.updateSettings(newPitch: v),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _buildSlider('السرعة', _tts.rate, 0.1, 1.0, (v) {
+                    _tts.updateSettings(newRate: v);
+                    setState(() {});
+                  }),
+                  _buildSlider('النبرة', _tts.pitch, 0.5, 2.0, (v) {
+                    _tts.updateSettings(newPitch: v);
+                    setState(() {});
+                  }),
+                  _buildSlider('الصوت', _tts.volume, 0.0, 1.0, (v) {
+                    _tts.updateSettings(newVolume: v);
+                    setState(() {});
+                  }),
                 ],
               ),
             ),
-          ),
+            const SizedBox(height: 16),
 
-          const SizedBox(height: 16),
+            // الأحداث
+            _buildSection(
+              title: '📋 أحداث النطق',
+              child: Column(
+                children: [
+                  _buildEventToggle('👋 دخول زائر', _tts.speakJoins, (v) {
+                    _tts.speakJoins = v;
+                    setState(() {});
+                  }),
+                  _buildEventToggle('💬 تعليق', _tts.speakComments, (v) {
+                    _tts.speakComments = v;
+                    setState(() {});
+                  }),
+                  _buildEventToggle('🎁 هدية', _tts.speakGifts, (v) {
+                    _tts.speakGifts = v;
+                    setState(() {});
+                  }),
+                  _buildEventToggle('➕ متابعة', _tts.speakFollows, (v) {
+                    _tts.speakFollows = v;
+                    setState(() {});
+                  }),
+                  _buildEventToggle('❤️ لايك', _tts.speakLikes, (v) {
+                    _tts.speakLikes = v;
+                    setState(() {});
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
 
-          // زر اختبار
+            // تجربة
+            _buildSection(
+              title: '🧪 تجربة',
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    _tts.speakCustom('مرحباً! هذا اختبار صوت HichamFinity');
+                  },
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('جرب الصوت'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection({required String title, required Widget child}) {
+    return Container(
+      decoration: AppDecorations.glassCard(),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text('اختبار الصوت'),
-              onPressed: () => tts.speak('مرحباً! هذا اختبار القراءة الصوتية من هشام فينيتي'),
+            width: 60,
+            child: Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          ),
+          Expanded(
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              activeColor: AppTheme.primaryColor,
+              inactiveColor: AppTheme.textMuted,
+              onChanged: onChanged,
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            child: Text(
+              value.toStringAsFixed(1),
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              textAlign: TextAlign.center,
             ),
           ),
         ],
@@ -165,29 +175,12 @@ class TtsSettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildCard({required Widget child}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildSwitch({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
+  Widget _buildEventToggle(String label, bool value, ValueChanged<bool> onChanged) {
     return SwitchListTile(
-      title: Text(title),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-      secondary: Icon(icon, color: value ? AppTheme.primary : AppTheme.textSecondary),
+      title: Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
       value: value,
-      activeColor: AppTheme.primary,
+      activeColor: AppTheme.primaryColor,
+      dense: true,
       onChanged: onChanged,
     );
   }

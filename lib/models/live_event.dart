@@ -1,96 +1,87 @@
-enum LiveEventType {
-  join,      // مشاهد دخل البث
-  gift,      // هدية
-  like,      // لايك
-  comment,   // تعليق
-  follow,    // متابعة جديدة
-  share,     // مشاركة
-  subscribe, // اشتراك
-}
-
 class LiveEvent {
   final String id;
-  final LiveEventType type;
+  final String type;
   final String username;
-  final String? displayName;
+  final String displayName;
   final String? profilePicUrl;
-  final String? message;      // للتعليقات
-  final String? giftName;     // اسم الهدية
-  final int? giftCount;       // عدد الهدايا
-  final int? giftValue;       // قيمة الهدية (coins)
-  final int? likeCount;       // عدد اللايكات
+  final String? message;
+  final String? giftName;
+  final int? giftCount;
+  final int? giftValue;
+  final int? likeCount;
   final DateTime timestamp;
 
   LiveEvent({
     required this.id,
     required this.type,
     required this.username,
-    this.displayName,
+    required this.displayName,
     this.profilePicUrl,
     this.message,
     this.giftName,
     this.giftCount,
     this.giftValue,
     this.likeCount,
-    required this.timestamp,
-  });
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
 
   factory LiveEvent.fromJson(Map<String, dynamic> json) {
     return LiveEvent(
-      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      type: LiveEventType.values.firstWhere(
-        (e) => e.name == json['type'],
-        orElse: () => LiveEventType.comment,
-      ),
-      username: json['username'] ?? 'unknown',
-      displayName: json['displayName'],
-      profilePicUrl: json['profilePicUrl'],
-      message: json['message'],
-      giftName: json['giftName'],
-      giftCount: json['giftCount'],
-      giftValue: json['giftValue'],
-      likeCount: json['likeCount'],
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      type: json['type'] as String? ?? 'unknown',
+      username: json['username'] as String? ?? '',
+      displayName: json['displayName'] as String? ?? json['username'] as String? ?? '',
+      profilePicUrl: json['profilePicUrl'] as String?,
+      message: json['message'] as String?,
+      giftName: json['giftName'] as String?,
+      giftCount: json['giftCount'] as int?,
+      giftValue: json['giftValue'] as int?,
+      likeCount: json['likeCount'] as int?,
       timestamp: json['timestamp'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'])
+          ? DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int)
           : DateTime.now(),
     );
   }
 
-  String get typeLabel {
+  String get icon {
     switch (type) {
-      case LiveEventType.join:
-        return '👁️ دخول';
-      case LiveEventType.gift:
-        return '🎁 هدية';
-      case LiveEventType.like:
-        return '❤️ لايك';
-      case LiveEventType.comment:
-        return '💬 تعليق';
-      case LiveEventType.follow:
-        return '➕ متابعة';
-      case LiveEventType.share:
-        return '🔗 مشاركة';
-      case LiveEventType.subscribe:
-        return '⭐ اشتراك';
+      case 'join':
+        return '👋';
+      case 'comment':
+        return '💬';
+      case 'gift':
+        return '🎁';
+      case 'like':
+        return '❤️';
+      case 'follow':
+        return '➕';
+      case 'share':
+        return '🔗';
+      case 'subscribe':
+        return '⭐';
+      default:
+        return '📌';
     }
   }
 
   String get description {
     switch (type) {
-      case LiveEventType.join:
-        return '${displayName ?? username} دخل البث';
-      case LiveEventType.gift:
-        return '${displayName ?? username} أرسل ${giftName ?? "هدية"} x${giftCount ?? 1}';
-      case LiveEventType.like:
-        return '${displayName ?? username} أعجب ${likeCount ?? 1} مرة';
-      case LiveEventType.comment:
-        return '${displayName ?? username}: ${message ?? ""}';
-      case LiveEventType.follow:
-        return '${displayName ?? username} تابعك!';
-      case LiveEventType.share:
-        return '${displayName ?? username} شارك البث';
-      case LiveEventType.subscribe:
-        return '${displayName ?? username} اشترك!';
+      case 'join':
+        return '$displayName دخل البث';
+      case 'comment':
+        return '$displayName: $message';
+      case 'gift':
+        return '$displayName أرسل $giftName ${giftCount != null && giftCount! > 1 ? "x$giftCount" : ""}';
+      case 'like':
+        return '$displayName أعطى ${likeCount ?? 1} لايك';
+      case 'follow':
+        return '$displayName تابعك';
+      case 'share':
+        return '$displayName شارك البث';
+      case 'subscribe':
+        return '$displayName اشترك';
+      default:
+        return displayName;
     }
   }
 }

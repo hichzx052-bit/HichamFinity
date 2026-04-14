@@ -1,186 +1,163 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
-import '../models/live_event.dart';
-import '../models/trigger_config.dart';
+import 'dart:convert';
 
-/// خدمة المحفزات — تراقب الأحداث وتطلق الفيديوهات/الأصوات
+enum TriggerType { likes, viewers, gifts, manual }
+
+class TriggerConfig {
+  final String id;
+  final TriggerType type;
+  final int threshold; // عدد اللايكات/المشاهدين/الخ
+  final String? videoPath; // مسار الفيديو
+  final String? giftName; // اسم الهدية (لو نوع هدية)
+  bool enabled;
+
+  TriggerConfig({
+    required this.id,
+    required this.type,
+    required this.threshold,
+    this.videoPath,
+    this.giftName,
+    this.enabled = true,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type.index,
+        'threshold': threshold,
+        'videoPath': videoPath,
+        'giftName': giftName,
+        'enabled': enabled,
+      };
+
+  factory TriggerConfig.fromJson(Map<String, dynamic> json) => TriggerConfig(
+        id: json['id'] as String,
+        type: TriggerType.values[json['type'] as int],
+        threshold: json['threshold'] as int,
+        videoPath: json['videoPath'] as String?,
+        giftName: json['giftName'] as String?,
+        enabled: json['enabled'] as bool? ?? true,
+      );
+}
+
 class TriggerService extends ChangeNotifier {
   final List<TriggerConfig> _triggers = [];
-  final _triggerFiredController = StreamController<TriggerFiredEvent>.broadcast();
+  final Set<String> _firedTriggers = {}; // اللي اشتغلت خلاص
+  
+  // Stream للفيديوهات اللي لازم تنعرض
+  final _videoController = StreamController<TriggerConfig>.broadcast();
+  Stream<TriggerConfig> get videoStream => _videoController.stream;
 
   List<TriggerConfig> get triggers => List.unmodifiable(_triggers);
-  Stream<TriggerFiredEvent> get onTriggerFired => _triggerFiredController.stream;
 
-  // تتبع اللايكات لكل مشاهد
-  final Map<String, int> _viewerLikes = {};
-
-  TriggerService() {
-    _loadTriggers();
+  /// تحميل الـ triggers المحفوظة
+  Future<void> loadTriggers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('triggers');
+    if (data != null) {
+      final list = jsonDecode(data) as List;
+      _triggers.clear();
+      _triggers.addAll(list.map((e) => TriggerConfig.fromJson(e as Map<String, dynamic>)));
+      notifyListeners();
+    }
   }
 
-  /// إضافة محفز جديد
-  void addTrigger({
-    required TriggerType type,
-    required String label,
-    required int threshold,
-    String? videoPath,
-    String? soundPath,
-    bool showViewerName = true,
-  }) {
-    _triggers.add(TriggerConfig(
-      id: const Uuid().v4(),
-      type: type,
-      label: label,
-      threshold: threshold,
-      videoPath: videoPath,
-      soundPath: soundPath,
-      showViewerName: showViewerName,
-    ));
+  /// حفظ الـ triggers
+  Future<void> _saveTriggers() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('triggers', jsonEncode(_triggers.map((e) => e.toJson()).toList()));
+  }
+
+  /// إضافة trigger جديد
+  void addTrigger(TriggerConfig trigger) {
+    _triggers.add(trigger);
     _saveTriggers();
     notifyListeners();
   }
 
-  /// حذف محفز
+  /// حذف trigger
   void removeTrigger(String id) {
     _triggers.removeWhere((t) => t.id == id);
     _saveTriggers();
     notifyListeners();
   }
 
-  /// تحديث محفز
-  void updateTrigger(String id, {
-    String? label,
-    int? threshold,
-    String? videoPath,
-    String? soundPath,
-    bool? showViewerName,
-    bool? enabled,
-  }) {
-    final index = _triggers.indexWhere((t) => t.id == id);
-    if (index == -1) return;
-
-    final old = _triggers[index];
-    _triggers[index] = TriggerConfig(
-      id: old.id,
-      type: old.type,
-      label: label ?? old.label,
-      threshold: threshold ?? old.threshold,
-      videoPath: videoPath ?? old.videoPath,
-      soundPath: soundPath ?? old.soundPath,
-      showViewerName: showViewerName ?? old.showViewerName,
-      enabled: enabled ?? old.enabled,
-      currentCount: old.currentCount,
-    );
+  /// تفعيل/تعطيل trigger
+  void toggleTrigger(String id) {
+    final trigger = _triggers.firstWhere((t) => t.id == id);
+    trigger.enabled = !trigger.enabled;
     _saveTriggers();
     notifyListeners();
   }
 
-  /// معالجة حدث — يتحقق من كل المحفزات
-  void processEvent(LiveEvent event) {
-    for (final trigger in _triggers) {
-      if (!trigger.enabled) continue;
-
-      switch (trigger.type) {
-        case TriggerType.likeCount:
-          if (event.type == LiveEventType.like) {
-            // تتبع لايكات المشاهد الواحد
-            final username = event.username;
-            _viewerLikes[username] = (_viewerLikes[username] ?? 0) + (event.likeCount ?? 1);
-
-            if (_viewerLikes[username]! >= trigger.threshold) {
-              _fireTrigger(trigger, event);
-              _viewerLikes[username] = 0; // ريسيت
-            }
-            trigger.currentCount = _viewerLikes[username]!;
-          }
-          break;
-
-        case TriggerType.giftReceived:
-          if (event.type == LiveEventType.gift) {
-            trigger.currentCount += event.giftValue ?? 0;
-            if (trigger.currentCount >= trigger.threshold) {
-              _fireTrigger(trigger, event);
-              trigger.currentCount = 0;
-            }
-          }
-          break;
-
-        case TriggerType.followerJoin:
-          if (event.type == LiveEventType.follow) {
-            trigger.currentCount++;
-            if (trigger.currentCount >= trigger.threshold) {
-              _fireTrigger(trigger, event);
-              trigger.currentCount = 0;
-            }
-          }
-          break;
-
-        case TriggerType.viewerCount:
-          if (event.type == LiveEventType.join) {
-            trigger.currentCount++;
-            if (trigger.currentCount >= trigger.threshold) {
-              _fireTrigger(trigger, event);
-            }
-          }
-          break;
-      }
-    }
-    notifyListeners();
-  }
-
-  void _fireTrigger(TriggerConfig trigger, LiveEvent event) {
-    _triggerFiredController.add(TriggerFiredEvent(
-      trigger: trigger,
-      event: event,
-      viewerName: event.displayName ?? event.username,
-    ));
-  }
-
-  /// إعادة ضبط كل العدادات
-  void resetAll() {
-    for (final t in _triggers) {
-      t.currentCount = 0;
-    }
-    _viewerLikes.clear();
-    notifyListeners();
-  }
-
-  Future<void> _saveTriggers() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = _triggers.map((t) => t.toJson()).toList();
-    await prefs.setString('triggers', jsonEncode(jsonList));
-  }
-
-  Future<void> _loadTriggers() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonStr = prefs.getString('triggers');
-    if (jsonStr != null) {
-      final list = jsonDecode(jsonStr) as List;
-      _triggers.clear();
-      _triggers.addAll(list.map((j) => TriggerConfig.fromJson(j)));
+  /// تحديث trigger
+  void updateTrigger(TriggerConfig updated) {
+    final index = _triggers.indexWhere((t) => t.id == updated.id);
+    if (index != -1) {
+      _triggers[index] = updated;
+      _saveTriggers();
       notifyListeners();
     }
   }
 
-  @override
+  /// فحص الأحداث — هل لازم نشغل فيديو؟
+  void checkLikeTrigger(int totalLikes) {
+    for (final trigger in _triggers) {
+      if (!trigger.enabled) continue;
+      if (trigger.type != TriggerType.likes) continue;
+      if (_firedTriggers.contains(trigger.id)) continue;
+
+      if (totalLikes >= trigger.threshold) {
+        _fireTrigger(trigger);
+      }
+    }
+  }
+
+  void checkViewerTrigger(int viewerCount) {
+    for (final trigger in _triggers) {
+      if (!trigger.enabled) continue;
+      if (trigger.type != TriggerType.viewers) continue;
+      if (_firedTriggers.contains(trigger.id)) continue;
+
+      if (viewerCount >= trigger.threshold) {
+        _fireTrigger(trigger);
+      }
+    }
+  }
+
+  void checkGiftTrigger(String giftName) {
+    for (final trigger in _triggers) {
+      if (!trigger.enabled) continue;
+      if (trigger.type != TriggerType.gifts) continue;
+
+      if (trigger.giftName == giftName || trigger.giftName == null || trigger.giftName!.isEmpty) {
+        _fireTrigger(trigger);
+      }
+    }
+  }
+
+  /// تشغيل يدوي
+  void fireManualTrigger(String id) {
+    final trigger = _triggers.firstWhere((t) => t.id == id, orElse: () => throw Exception('Trigger not found'));
+    _fireTrigger(trigger);
+  }
+
+  void _fireTrigger(TriggerConfig trigger) {
+    if (trigger.videoPath == null || trigger.videoPath!.isEmpty) return;
+    
+    _firedTriggers.add(trigger.id);
+    _videoController.add(trigger);
+    debugPrint('🎬 Trigger fired: ${trigger.id} — ${trigger.videoPath}');
+  }
+
+  /// إعادة تعيين (بداية بث جديد)
+  void resetFiredTriggers() {
+    _firedTriggers.clear();
+  }
+
   void dispose() {
-    _triggerFiredController.close();
+    _videoController.close();
     super.dispose();
   }
-}
-
-/// حدث إطلاق محفز
-class TriggerFiredEvent {
-  final TriggerConfig trigger;
-  final LiveEvent event;
-  final String viewerName;
-
-  TriggerFiredEvent({
-    required this.trigger,
-    required this.event,
-    required this.viewerName,
-  });
 }

@@ -1,171 +1,234 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
-import '../utils/theme.dart';
 import '../services/trigger_service.dart';
-import '../models/trigger_config.dart';
+import '../utils/theme.dart';
 
 class VideoTriggersScreen extends StatelessWidget {
   const VideoTriggersScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final triggerService = context.watch<TriggerService>();
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('🎬 فيديو مخصص'),
+      appBar: AppBar(title: const Text('🎬 الفيديوهات')),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppTheme.primaryColor,
+        onPressed: () => _showAddDialog(context),
+        child: const Icon(Icons.add),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddTriggerDialog(context),
-        backgroundColor: AppTheme.primary,
-        icon: const Icon(Icons.add),
-        label: const Text('إضافة محفز'),
-      ),
-      body: triggerService.triggers.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.videocam_off_rounded, size: 60, color: AppTheme.textSecondary.withOpacity(0.3)),
-                  const SizedBox(height: 16),
-                  const Text('ما فيه محفزات', style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'أضف محفز عشان يظهر فيديو\nلما مشاهد يوصل عدد لايكات معين',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppTheme.backgroundColor, Color(0xFF0D0D1A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Consumer<TriggerService>(
+          builder: (context, service, _) {
+            if (service.triggers.isEmpty) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.videocam_off, color: AppTheme.textMuted, size: 60),
+                    SizedBox(height: 16),
+                    Text('ما فيه فيديوهات', style: TextStyle(color: AppTheme.textMuted, fontSize: 16)),
+                    SizedBox(height: 8),
+                    Text('اضغط + لإضافة فيديو', style: TextStyle(color: AppTheme.textMuted, fontSize: 14)),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: triggerService.triggers.length,
+              itemCount: service.triggers.length,
               itemBuilder: (context, index) {
-                return _TriggerCard(trigger: triggerService.triggers[index]);
+                final trigger = service.triggers[index];
+                return _buildTriggerCard(context, trigger, service);
               },
-            ),
+            );
+          },
+        ),
+      ),
     );
   }
 
-  void _showAddTriggerDialog(BuildContext context) {
-    final labelController = TextEditingController();
+  Widget _buildTriggerCard(BuildContext context, TriggerConfig trigger, TriggerService service) {
+    final typeInfo = _getTriggerTypeInfo(trigger.type);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: AppDecorations.glassCard(
+        borderColor: trigger.enabled ? typeInfo.color.withValues(alpha: 0.3) : AppTheme.textMuted.withValues(alpha: 0.2),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 45,
+          height: 45,
+          decoration: BoxDecoration(
+            color: typeInfo.color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(typeInfo.icon, color: typeInfo.color),
+        ),
+        title: Text(
+          '${typeInfo.label} — ${trigger.threshold}',
+          style: TextStyle(
+            color: trigger.enabled ? AppTheme.textPrimary : AppTheme.textMuted,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          trigger.videoPath?.split('/').last ?? 'بدون فيديو',
+          style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // تشغيل يدوي
+            IconButton(
+              icon: const Icon(Icons.play_circle, color: AppTheme.successColor),
+              onPressed: () => service.fireManualTrigger(trigger.id),
+            ),
+            // تفعيل/تعطيل
+            Switch(
+              value: trigger.enabled,
+              activeColor: AppTheme.primaryColor,
+              onChanged: (_) => service.toggleTrigger(trigger.id),
+            ),
+            // حذف
+            IconButton(
+              icon: const Icon(Icons.delete, color: AppTheme.errorColor, size: 20),
+              onPressed: () => service.removeTrigger(trigger.id),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddDialog(BuildContext context) {
+    TriggerType selectedType = TriggerType.likes;
     final thresholdController = TextEditingController(text: '100');
-    TriggerType selectedType = TriggerType.likeCount;
-    String? selectedVideoPath;
-    bool showName = true;
+    final giftNameController = TextEditingController();
+    String? videoPath;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppTheme.surface,
+      backgroundColor: AppTheme.surfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setSheetState) {
             return Padding(
               padding: EdgeInsets.only(
-                left: 20, right: 20, top: 20,
+                left: 20,
+                right: 20,
+                top: 20,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '➕ محفز جديد',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
+                  const Center(
+                    child: Text(
+                      '➕ إضافة فيديو',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(height: 20),
 
-                  // نوع المحفز
-                  DropdownButtonFormField<TriggerType>(
-                    value: selectedType,
-                    decoration: const InputDecoration(labelText: 'نوع المحفز'),
-                    items: const [
-                      DropdownMenuItem(value: TriggerType.likeCount, child: Text('❤️ عدد لايكات من مشاهد')),
-                      DropdownMenuItem(value: TriggerType.giftReceived, child: Text('🎁 قيمة هدايا')),
-                      DropdownMenuItem(value: TriggerType.followerJoin, child: Text('➕ عدد متابعين جدد')),
-                      DropdownMenuItem(value: TriggerType.viewerCount, child: Text('👁️ عدد مشاهدين')),
-                    ],
-                    onChanged: (v) => setState(() => selectedType = v!),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // اسم المحفز
-                  TextField(
-                    controller: labelController,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم المحفز',
-                      hintText: 'مثال: فيديو 100 لايك',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // الحد
-                  TextField(
-                    controller: thresholdController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: 'العدد المطلوب',
-                      hintText: _getThresholdHint(selectedType),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // اختيار فيديو
-                  OutlinedButton.icon(
-                    icon: Icon(
-                      selectedVideoPath != null ? Icons.check_circle : Icons.video_library,
-                      color: selectedVideoPath != null ? AppTheme.success : AppTheme.textSecondary,
-                    ),
-                    label: Text(
-                      selectedVideoPath != null ? 'فيديو محدد ✅' : 'اختر فيديو من الجهاز',
-                    ),
-                    onPressed: () async {
-                      final result = await FilePicker.platform.pickFiles(type: FileType.video);
-                      if (result != null) {
-                        setState(() => selectedVideoPath = result.files.single.path);
-                      }
-                    },
-                  ),
+                  // نوع الحدث
+                  const Text('نوع الحدث:', style: TextStyle(color: AppTheme.textSecondary)),
                   const SizedBox(height: 8),
-
-                  // عرض اسم المشاهد
-                  SwitchListTile(
-                    title: const Text('عرض اسم المشاهد فوق الفيديو'),
-                    value: showName,
-                    activeColor: AppTheme.primary,
-                    onChanged: (v) => setState(() => showName = v),
-                    contentPadding: EdgeInsets.zero,
+                  Wrap(
+                    spacing: 8,
+                    children: TriggerType.values.map((type) {
+                      final info = _getTriggerTypeInfo(type);
+                      final isSelected = selectedType == type;
+                      return ChoiceChip(
+                        label: Text(info.label),
+                        selected: isSelected,
+                        selectedColor: info.color.withValues(alpha: 0.3),
+                        labelStyle: TextStyle(color: isSelected ? info.color : AppTheme.textMuted),
+                        onSelected: (_) => setSheetState(() => selectedType = type),
+                      );
+                    }).toList(),
                   ),
                   const SizedBox(height: 16),
 
+                  // العدد
+                  if (selectedType != TriggerType.manual) ...[
+                    Text(
+                      selectedType == TriggerType.gifts ? 'اسم الهدية (اختياري):' : 'العدد المطلوب:',
+                      style: const TextStyle(color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 8),
+                    if (selectedType == TriggerType.gifts)
+                      TextField(
+                        controller: giftNameController,
+                        style: const TextStyle(color: AppTheme.textPrimary),
+                        decoration: const InputDecoration(hintText: 'أي هدية'),
+                      ),
+                    if (selectedType != TriggerType.gifts)
+                      TextField(
+                        controller: thresholdController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: AppTheme.textPrimary),
+                        decoration: const InputDecoration(hintText: '100'),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // اختيار فيديو
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await FilePicker.platform.pickFiles(type: FileType.video);
+                        if (result != null) {
+                          setSheetState(() => videoPath = result.files.single.path);
+                        }
+                      },
+                      icon: const Icon(Icons.video_library),
+                      label: Text(
+                        videoPath != null ? videoPath!.split('/').last : 'اختر فيديو',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.secondaryColor,
+                        side: const BorderSide(color: AppTheme.secondaryColor),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
                   // زر الإضافة
-                  ElevatedButton(
-                    onPressed: () {
-                      final label = labelController.text.trim();
-                      final threshold = int.tryParse(thresholdController.text) ?? 100;
-                      if (label.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('أدخل اسم المحفز')),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final trigger = TriggerConfig(
+                          id: DateTime.now().millisecondsSinceEpoch.toString(),
+                          type: selectedType,
+                          threshold: int.tryParse(thresholdController.text) ?? 100,
+                          videoPath: videoPath,
+                          giftName: giftNameController.text.isNotEmpty ? giftNameController.text : null,
                         );
-                        return;
-                      }
-                      context.read<TriggerService>().addTrigger(
-                        type: selectedType,
-                        label: label,
-                        threshold: threshold,
-                        videoPath: selectedVideoPath,
-                        showViewerName: showName,
-                      );
-                      Navigator.pop(context);
-                    },
-                    child: const Text('✅ إضافة', style: TextStyle(fontSize: 18)),
+                        context.read<TriggerService>().addTrigger(trigger);
+                        Navigator.pop(context);
+                      },
+                      child: const Text('✅ إضافة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
                   ),
                 ],
               ),
@@ -176,106 +239,23 @@ class VideoTriggersScreen extends StatelessWidget {
     );
   }
 
-  String _getThresholdHint(TriggerType type) {
+  _TriggerTypeInfo _getTriggerTypeInfo(TriggerType type) {
     switch (type) {
-      case TriggerType.likeCount: return 'مثال: 100 (100 لايك من مشاهد واحد)';
-      case TriggerType.giftReceived: return 'مثال: 500 (500 كوين هدايا)';
-      case TriggerType.followerJoin: return 'مثال: 10 (10 متابعين جدد)';
-      case TriggerType.viewerCount: return 'مثال: 50 (50 مشاهد)';
+      case TriggerType.likes:
+        return _TriggerTypeInfo('❤️ لايكات', Icons.favorite, AppTheme.primaryColor);
+      case TriggerType.viewers:
+        return _TriggerTypeInfo('👁 مشاهدين', Icons.visibility, AppTheme.secondaryColor);
+      case TriggerType.gifts:
+        return _TriggerTypeInfo('🎁 هدايا', Icons.card_giftcard, AppTheme.accentGold);
+      case TriggerType.manual:
+        return _TriggerTypeInfo('🎮 يدوي', Icons.touch_app, AppTheme.accentPurple);
     }
   }
 }
 
-class _TriggerCard extends StatelessWidget {
-  final TriggerConfig trigger;
-
-  const _TriggerCard({required this.trigger});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: trigger.enabled ? AppTheme.primary.withOpacity(0.3) : AppTheme.surfaceLight,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(_getTypeIcon(trigger.type), color: AppTheme.accent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  trigger.label,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
-              Switch(
-                value: trigger.enabled,
-                activeColor: AppTheme.primary,
-                onChanged: (v) {
-                  context.read<TriggerService>().updateTrigger(trigger.id, enabled: v);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // شريط التقدم
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: trigger.progress,
-              backgroundColor: AppTheme.surfaceLight,
-              valueColor: AlwaysStoppedAnimation(
-                trigger.isTriggered ? AppTheme.success : AppTheme.primary,
-              ),
-              minHeight: 8,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${trigger.currentCount} / ${trigger.threshold}',
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-              ),
-              Row(
-                children: [
-                  if (trigger.videoPath != null)
-                    const Icon(Icons.videocam, size: 16, color: AppTheme.success),
-                  if (trigger.showViewerName)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4),
-                      child: Icon(Icons.person, size: 16, color: AppTheme.viewer),
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
-                    onPressed: () {
-                      context.read<TriggerService>().removeTrigger(trigger.id);
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _getTypeIcon(TriggerType type) {
-    switch (type) {
-      case TriggerType.likeCount: return Icons.favorite_rounded;
-      case TriggerType.giftReceived: return Icons.card_giftcard_rounded;
-      case TriggerType.followerJoin: return Icons.person_add_rounded;
-      case TriggerType.viewerCount: return Icons.groups_rounded;
-    }
-  }
+class _TriggerTypeInfo {
+  final String label;
+  final IconData icon;
+  final Color color;
+  _TriggerTypeInfo(this.label, this.icon, this.color);
 }
