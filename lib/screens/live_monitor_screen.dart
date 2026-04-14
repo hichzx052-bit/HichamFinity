@@ -57,7 +57,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                 _buildQuickStats(service),
                 const Divider(color: AppTheme.textMuted, height: 1),
                 // "الأوائل"
-                if (service.state == ConnectionState.connected)
+                if (service.state == LiveConnectionState.connected)
                   _buildFirstEvents(service),
                 // قائمة الأحداث
                 Expanded(
@@ -73,23 +73,23 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     );
   }
 
-  Widget _buildStatusBadge(ConnectionState state) {
+  Widget _buildStatusBadge(LiveConnectionState state) {
     Color color;
     String text;
     IconData icon;
 
     switch (state) {
-      case ConnectionState.connected:
+      case LiveConnectionState.connected:
         color = AppTheme.successColor;
         text = 'متصل';
         icon = Icons.circle;
         break;
-      case ConnectionState.connecting:
+      case LiveConnectionState.connecting:
         color = AppTheme.warningColor;
         text = 'جاري...';
         icon = Icons.sync;
         break;
-      case ConnectionState.error:
+      case LiveConnectionState.error:
         color = AppTheme.errorColor;
         text = 'خطأ';
         icon = Icons.error;
@@ -231,7 +231,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   }
 
   Widget _buildEmptyState(TikTokLiveService service) {
-    if (service.state == ConnectionState.error) {
+    if (service.state == LiveConnectionState.error) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

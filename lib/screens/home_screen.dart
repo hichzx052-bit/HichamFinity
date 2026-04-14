@@ -275,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildConnectButton() {
     return Consumer<TikTokLiveService>(
       builder: (context, service, _) {
-        final isConnecting = service.state == ConnectionState.connecting;
+        final isConnecting = service.state == LiveConnectionState.connecting;
         return SizedBox(
           width: double.infinity,
           height: 56,

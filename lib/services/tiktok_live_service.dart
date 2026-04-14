@@ -6,11 +6,11 @@ import '../models/live_event.dart';
 import '../models/viewer.dart';
 import '../utils/constants.dart';
 
-enum ConnectionState { disconnected, connecting, connected, error }
+enum LiveConnectionState { disconnected, connecting, connected, error }
 
 class TikTokLiveService extends ChangeNotifier {
   WebSocketChannel? _channel;
-  ConnectionState _state = ConnectionState.disconnected;
+  LiveConnectionState _state = LiveConnectionState.disconnected;
   String? _errorMessage;
   String _serverUrl = AppConstants.defaultServerUrl;
   String? _username;
@@ -45,7 +45,7 @@ class TikTokLiveService extends ChangeNotifier {
   DateTime? _streamStartTime;
 
   // Getters
-  ConnectionState get state => _state;
+  LiveConnectionState get state => _state;
   String? get errorMessage => _errorMessage;
   String get serverUrl => _serverUrl;
   String? get username => _username;
@@ -81,10 +81,10 @@ class TikTokLiveService extends ChangeNotifier {
   }
 
   Future<void> connect(String username) async {
-    if (_state == ConnectionState.connecting) return;
+    if (_state == LiveConnectionState.connecting) return;
 
     _username = username;
-    _state = ConnectionState.connecting;
+    _state = LiveConnectionState.connecting;
     _errorMessage = null;
     notifyListeners();
 
@@ -98,7 +98,7 @@ class TikTokLiveService extends ChangeNotifier {
         onDone: _onDone,
       );
     } catch (e) {
-      _state = ConnectionState.error;
+      _state = LiveConnectionState.error;
       _errorMessage = e.toString();
       notifyListeners();
     }
@@ -107,7 +107,7 @@ class TikTokLiveService extends ChangeNotifier {
   void disconnect() {
     _channel?.sink.close();
     _channel = null;
-    _state = ConnectionState.disconnected;
+    _state = LiveConnectionState.disconnected;
     notifyListeners();
   }
 
@@ -136,7 +136,7 @@ class TikTokLiveService extends ChangeNotifier {
 
       switch (type) {
         case 'connected':
-          _state = ConnectionState.connected;
+          _state = LiveConnectionState.connected;
           _resetStats();
           _streamStartTime = DateTime.now();
           notifyListeners();
@@ -176,12 +176,12 @@ class TikTokLiveService extends ChangeNotifier {
           break;
 
         case 'streamEnd':
-          _state = ConnectionState.disconnected;
+          _state = LiveConnectionState.disconnected;
           notifyListeners();
           break;
 
         case 'error':
-          _state = ConnectionState.error;
+          _state = LiveConnectionState.error;
           _errorMessage = data['message'] as String? ?? 'خطأ غير معروف';
           notifyListeners();
           break;
@@ -298,14 +298,14 @@ class TikTokLiveService extends ChangeNotifier {
   }
 
   void _onError(dynamic error) {
-    _state = ConnectionState.error;
+    _state = LiveConnectionState.error;
     _errorMessage = error.toString();
     notifyListeners();
   }
 
   void _onDone() {
-    if (_state != ConnectionState.disconnected) {
-      _state = ConnectionState.disconnected;
+    if (_state != LiveConnectionState.disconnected) {
+      _state = LiveConnectionState.disconnected;
       notifyListeners();
     }
   }
