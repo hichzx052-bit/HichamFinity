@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/tiktok_live_service.dart';
@@ -24,9 +25,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _usernameController = TextEditingController();
   late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-  late AnimationController _glowController;
-  late Animation<double> _glowAnimation;
+  late AnimationController _rotateController;
 
   @override
   void initState() {
@@ -35,17 +34,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
 
-    _glowController = AnimationController(
-      duration: const Duration(seconds: 3),
+    _rotateController = AnimationController(
+      duration: const Duration(seconds: 8),
       vsync: this,
-    )..repeat(reverse: true);
-    _glowAnimation = Tween<double>(begin: 0.3, end: 0.8).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
-    );
+    )..repeat();
 
     _initServices();
   }
@@ -53,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _initServices() async {
     final tts = context.read<TtsService>();
     await tts.init();
+    tts.resetLikeCounter();
     final triggers = context.read<TriggerService>();
     await triggers.loadTriggers();
   }
@@ -61,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _usernameController.dispose();
     _pulseController.dispose();
-    _glowController.dispose();
+    _rotateController.dispose();
     super.dispose();
   }
 
@@ -70,10 +64,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('اكتب اسم المستخدم أولاً'),
+          content: const Text('✏️ اكتب اسم المستخدم أولاً'),
           backgroundColor: AppTheme.errorColor,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
@@ -85,7 +80,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LiveMonitorScreen()),
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const LiveMonitorScreen(),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
     );
   }
 
@@ -95,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final triggers = context.read<TriggerService>();
 
     triggers.resetFiredTriggers();
+    tts.resetLikeCounter();
 
     service.eventStream.listen((event) {
       switch (event.type) {
@@ -109,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           triggers.checkGiftTrigger(event.giftName ?? '');
           break;
         case 'like':
-          tts.speakLike(event.displayName, event.likeCount ?? 1);
+          tts.speakLikeAtThreshold(service.totalLikes);
           triggers.checkLikeTrigger(service.totalLikes);
           break;
         case 'follow':
@@ -124,17 +125,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final name = data['name']!;
       String label;
       switch (type) {
-        case 'follow':
-          label = 'متابع';
-          break;
-        case 'comment':
-          label = 'معلق';
-          break;
-        case 'gift':
-          label = 'مهدي';
-          break;
-        default:
-          label = type;
+        case 'follow': label = 'متابع'; break;
+        case 'comment': label = 'معلق'; break;
+        case 'gift': label = 'مهدي'; break;
+        default: label = type;
       }
       tts.speakFirst(label, name);
     });
@@ -146,104 +140,143 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return VideoOverlay(
       triggerService: triggers,
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF0A0A1A), Color(0xFF0D0520), Color(0xFF0A0A1A)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
-                  const SizedBox(height: 30),
-                  _buildLogo(),
-                  const SizedBox(height: 35),
-                  _buildConnectCard(),
-                  const SizedBox(height: 30),
-                  _buildMenuGrid(),
-                  const SizedBox(height: 25),
-                  _buildFooter(),
-                  const SizedBox(height: 20),
-                ],
+        body: Stack(
+          children: [
+            // خلفية متحركة
+            _buildAnimatedBackground(),
+            // المحتوى
+            SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 25),
+                    _buildLogo(),
+                    const SizedBox(height: 30),
+                    _buildConnectCard(),
+                    const SizedBox(height: 28),
+                    _buildMenuGrid(),
+                    const SizedBox(height: 20),
+                    _buildFooter(),
+                    const SizedBox(height: 15),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
+  Widget _buildAnimatedBackground() {
+    return AnimatedBuilder(
+      animation: _rotateController,
+      builder: (context, child) {
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF05050F), Color(0xFF0A0520), Color(0xFF050510)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: CustomPaint(
+            painter: _BackgroundPainter(_rotateController.value),
+            size: Size.infinite,
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildLogo() {
-    return ScaleTransition(
-      scale: _pulseAnimation,
-      child: Column(
-        children: [
-          // اللوجو مع توهج
-          AnimatedBuilder(
-            animation: _glowController,
-            builder: (context, child) {
-              return Container(
-                width: 110,
-                height: 110,
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final scale = 1.0 + (_pulseController.value * 0.05);
+        final glowOpacity = 0.3 + (_pulseController.value * 0.4);
+        return Transform.scale(
+          scale: scale,
+          child: Column(
+            children: [
+              // لوجو دائري متوهج
+              Container(
+                width: 120,
+                height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: AppTheme.primaryGradient,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF0050), Color(0xFFFF3070), Color(0xFFFF0050)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.primaryColor.withValues(alpha: _glowAnimation.value),
-                      blurRadius: 40,
-                      spreadRadius: 8,
+                      color: const Color(0xFFFF0050).withValues(alpha: glowOpacity),
+                      blurRadius: 50,
+                      spreadRadius: 10,
                     ),
                     BoxShadow(
-                      color: AppTheme.secondaryColor.withValues(alpha: _glowAnimation.value * 0.5),
-                      blurRadius: 60,
-                      spreadRadius: 12,
+                      color: const Color(0xFF00F2EA).withValues(alpha: glowOpacity * 0.4),
+                      blurRadius: 80,
+                      spreadRadius: 20,
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.live_tv_rounded,
-                  size: 55,
-                  color: Colors.white,
+                child: const Center(
+                  child: Text('🎬', style: TextStyle(fontSize: 55)),
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 18),
-          // اسم التطبيق
-          ShaderMask(
-            shaderCallback: (bounds) => const LinearGradient(
-              colors: [AppTheme.primaryColor, AppTheme.secondaryColor, AppTheme.accentPurple],
-            ).createShader(bounds),
-            child: const Text(
-              'HichamFinity',
-              style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 1.5,
               ),
-            ),
+              const SizedBox(height: 20),
+              // اسم التطبيق
+              ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [Color(0xFFFF0050), Color(0xFF00F2EA), Color(0xFF9B59B6)],
+                ).createShader(bounds),
+                child: const Text(
+                  'HichamFinity',
+                  style: TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 2,
+                    shadows: [
+                      Shadow(color: Color(0xFFFF0050), blurRadius: 20),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // وصف
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFFF0050).withValues(alpha: 0.2),
+                      const Color(0xFF00F2EA).withValues(alpha: 0.2),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(25),
+                  border: Border.all(
+                    color: const Color(0xFFFF0050).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: const Text(
+                  '⚡ أداة البث الاحترافية ⚡',
+                  style: TextStyle(
+                    color: Color(0xFF00F2EA),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
-            ),
-            child: const Text(
-              '⚡ أداة البث الاحترافية',
-              style: TextStyle(color: AppTheme.secondaryColor, fontSize: 13, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -251,119 +284,146 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1A1A35), Color(0xFF12122A)],
+          colors: [Color(0xFF15152D), Color(0xFF0E0E22)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          width: 1.5,
+          color: const Color(0xFFFF0050).withValues(alpha: 0.25),
+        ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: const Color(0xFFFF0050).withValues(alpha: 0.08),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(24),
       child: Column(
         children: [
+          // عنوان
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFFF0050).withValues(alpha: 0.2),
+                      const Color(0xFFFF0050).withValues(alpha: 0.05),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFF0050).withValues(alpha: 0.3)),
                 ),
-                child: const Icon(Icons.live_tv, color: AppTheme.primaryColor, size: 22),
+                child: const Text('🔴', style: TextStyle(fontSize: 20)),
               ),
-              const SizedBox(width: 10),
-              const Text(
-                'اتصل بالبث المباشر',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'اتصل بالبث المباشر',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  Text(
+                    'اكتب اسم المستخدم وابدأ',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF666680)),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          // حقل اليوزرنيم
+          const SizedBox(height: 18),
+          // حقل الإدخال
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF0A0A1A),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              color: const Color(0xFF08081A),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: TextField(
               controller: _usernameController,
               textDirection: TextDirection.ltr,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
               ),
               decoration: InputDecoration(
                 hintText: '@username',
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 18),
-                prefixIcon: const Icon(Icons.alternate_email, color: AppTheme.secondaryColor),
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.15), fontSize: 20),
+                prefixIcon: const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: Text('🎯', style: TextStyle(fontSize: 22)),
+                ),
+                prefixIconConstraints: const BoxConstraints(minWidth: 50),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           // زر الاتصال
           Consumer<TikTokLiveService>(
             builder: (context, service, _) {
               final isConnecting = service.state == LiveConnectionState.connecting;
-              return SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: isConnecting ? null : _connect,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              return GestureDetector(
+                onTap: isConnecting ? null : _connect,
+                child: Container(
+                  width: double.infinity,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: isConnecting
+                        ? const LinearGradient(colors: [Color(0xFF333333), Color(0xFF444444)])
+                        : const LinearGradient(
+                            colors: [Color(0xFFFF0050), Color(0xFFFF3366), Color(0xFFFF0050)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isConnecting ? [] : [
+                      BoxShadow(
+                        color: const Color(0xFFFF0050).withValues(alpha: 0.4),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      gradient: isConnecting ? null : AppTheme.primaryGradient,
-                      color: isConnecting ? AppTheme.textMuted : null,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: isConnecting ? null : [
-                        BoxShadow(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.4),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Container(
-                      alignment: Alignment.center,
-                      child: isConnecting
-                          ? const SizedBox(
-                              width: 24, height: 24,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.bolt_rounded, size: 26, color: Colors.white),
-                                SizedBox(width: 8),
-                                Text(
-                                  'اتصل الآن',
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                  child: Center(
+                    child: isConnecting
+                        ? const SizedBox(
+                            width: 26, height: 26,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('⚡', style: TextStyle(fontSize: 24)),
+                              SizedBox(width: 8),
+                              Text(
+                                'اتصل الآن',
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 1,
                                 ),
-                              ],
-                            ),
-                    ),
+                              ),
+                            ],
+                          ),
                   ),
                 ),
               );
@@ -376,12 +436,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildMenuGrid() {
     final items = [
-      _MenuItem(Icons.monitor_heart_rounded, 'مراقبة البث', AppTheme.primaryColor, '📡', const LiveMonitorScreen()),
-      _MenuItem(Icons.record_voice_over_rounded, 'الأصوات', AppTheme.secondaryColor, '🎤', const TtsSettingsScreen()),
-      _MenuItem(Icons.videocam_rounded, 'الفيديوهات', AppTheme.accentPurple, '🎬', const VideoTriggersScreen()),
-      _MenuItem(Icons.notifications_active_rounded, 'التنبيهات', AppTheme.warningColor, '🔔', const AlertsScreen()),
-      _MenuItem(Icons.bar_chart_rounded, 'الإحصائيات', AppTheme.successColor, '📊', const StatisticsScreen()),
-      _MenuItem(Icons.settings_rounded, 'الإعدادات', AppTheme.textSecondary, '⚙️', const SettingsScreen()),
+      _MenuItem('📡', 'مراقبة\nالبث', [const Color(0xFFFF0050), const Color(0xFFFF3366)], const LiveMonitorScreen()),
+      _MenuItem('🎤', 'إعدادات\nالصوت', [const Color(0xFF00F2EA), const Color(0xFF00C4BD)], const TtsSettingsScreen()),
+      _MenuItem('🎬', 'الفيديوهات', [const Color(0xFF9B59B6), const Color(0xFF8E44AD)], const VideoTriggersScreen()),
+      _MenuItem('🔔', 'التنبيهات', [const Color(0xFFFFAB00), const Color(0xFFFF8F00)], const AlertsScreen()),
+      _MenuItem('📊', 'الإحصائيات', [const Color(0xFF00E676), const Color(0xFF00C853)], const StatisticsScreen()),
+      _MenuItem('⚙️', 'الإعدادات', [const Color(0xFF78909C), const Color(0xFF546E7A)], const SettingsScreen()),
     ];
 
     return GridView.builder(
@@ -391,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         crossAxisCount: 3,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: 0.9,
+        childAspectRatio: 0.85,
       ),
       itemCount: items.length,
       itemBuilder: (context, index) => _buildMenuItem(items[index]),
@@ -400,42 +460,78 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildMenuItem(_MenuItem item) {
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => item.screen)),
+      onTap: () => Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => item.screen,
+          transitionsBuilder: (_, animation, __, child) {
+            return SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+                  .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+              child: FadeTransition(opacity: animation, child: child),
+            );
+          },
+        ),
+      ),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              item.color.withValues(alpha: 0.12),
-              item.color.withValues(alpha: 0.04),
+              item.colors[0].withValues(alpha: 0.15),
+              item.colors[1].withValues(alpha: 0.05),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: item.color.withValues(alpha: 0.2)),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: item.colors[0].withValues(alpha: 0.25),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: item.colors[0].withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(item.emoji, style: const TextStyle(fontSize: 30)),
-            const SizedBox(height: 8),
+            // إيموجي كبير
             Container(
-              width: 42,
-              height: 42,
+              width: 55,
+              height: 55,
               decoration: BoxDecoration(
-                color: item.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [
+                    item.colors[0].withValues(alpha: 0.2),
+                    item.colors[1].withValues(alpha: 0.08),
+                  ],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(color: item.colors[0].withValues(alpha: 0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: item.colors[0].withValues(alpha: 0.15),
+                    blurRadius: 15,
+                  ),
+                ],
               ),
-              child: Icon(item.icon, color: item.color, size: 24),
+              child: Center(
+                child: Text(item.emoji, style: const TextStyle(fontSize: 26)),
+              ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               item.label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: item.color,
+                color: item.colors[0],
                 fontSize: 11,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
               ),
             ),
           ],
@@ -445,35 +541,69 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildFooter() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        children: [
-          ShaderMask(
-            shaderCallback: (bounds) => const LinearGradient(
-              colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
-            ).createShader(bounds),
-            child: Text(
-              '${AppConstants.appName} v${AppConstants.appVersion}',
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-            ),
+    return Column(
+      children: [
+        ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [Color(0xFFFF0050), Color(0xFF00F2EA)],
+          ).createShader(bounds),
+          child: Text(
+            '${AppConstants.appName} v${AppConstants.appVersion}',
+            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'صنع بـ ❤️ بواسطة Hicham',
-            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 3),
+        const Text(
+          'صنع بـ ❤️ بواسطة Hicham',
+          style: TextStyle(color: Color(0xFF555555), fontSize: 11),
+        ),
+      ],
     );
   }
 }
 
 class _MenuItem {
-  final IconData icon;
-  final String label;
-  final Color color;
   final String emoji;
+  final String label;
+  final List<Color> colors;
   final Widget screen;
-  _MenuItem(this.icon, this.label, this.color, this.emoji, this.screen);
+  _MenuItem(this.emoji, this.label, this.colors, this.screen);
+}
+
+/// رسام الخلفية المتحركة — نقاط متوهجة
+class _BackgroundPainter extends CustomPainter {
+  final double progress;
+  _BackgroundPainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..style = PaintingStyle.fill;
+
+    // نقاط حمراء متوهجة
+    final dots = [
+      Offset(size.width * 0.2, size.height * 0.15),
+      Offset(size.width * 0.8, size.height * 0.25),
+      Offset(size.width * 0.5, size.height * 0.5),
+      Offset(size.width * 0.15, size.height * 0.7),
+      Offset(size.width * 0.85, size.height * 0.8),
+    ];
+
+    for (var i = 0; i < dots.length; i++) {
+      final offset = progress * 2 * 3.14159;
+      final dx = dots[i].dx + sin(offset + i) * 20;
+      final dy = dots[i].dy + cos(offset + i * 0.7) * 15;
+
+      paint.shader = RadialGradient(
+        colors: [
+          const Color(0xFFFF0050).withValues(alpha: 0.06),
+          const Color(0xFFFF0050).withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromCircle(center: Offset(dx, dy), radius: 80));
+
+      canvas.drawCircle(Offset(dx, dy), 80, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BackgroundPainter oldDelegate) => true;
 }

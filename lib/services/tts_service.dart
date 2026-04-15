@@ -100,10 +100,28 @@ class TtsService {
     _enqueue('$displayName تابعك!');
   }
 
-  /// نطق لايك
-  void speakLike(String displayName, int count) {
+  // عتبة اللايكات — ينطق بس لما يوصل هالعدد
+  int likeThreshold = 100;
+  int _lastSpokenLikeCount = 0;
+
+  /// نطق لايك — بس عند كل 100 (أو العتبة المحددة)
+  void speakLikeAtThreshold(int totalLikes) {
     if (!speakLikes) return;
-    _enqueue('$displayName أعطاك $count لايك');
+    
+    // نشوف كم مرة وصلنا العتبة
+    final milestoneNow = (totalLikes ~/ likeThreshold);
+    final milestoneLast = (_lastSpokenLikeCount ~/ likeThreshold);
+    
+    if (milestoneNow > milestoneLast) {
+      final reached = milestoneNow * likeThreshold;
+      _lastSpokenLikeCount = totalLikes;
+      _enqueue('وصلنا $reached لايك!');
+    }
+  }
+
+  /// إعادة تعيين عداد اللايكات (بداية بث جديد)
+  void resetLikeCounter() {
+    _lastSpokenLikeCount = 0;
   }
 
   /// نطق نص مخصص
