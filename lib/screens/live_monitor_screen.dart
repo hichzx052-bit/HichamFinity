@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/tiktok_live_service.dart';
+import '../services/trigger_service.dart';
+import '../widgets/video_overlay.dart';
 import '../utils/theme.dart';
 import 'dart:async';
 
@@ -30,45 +32,52 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('📡 مراقبة البث'),
-        actions: [
-          Consumer<TikTokLiveService>(
-            builder: (_, service, __) {
-              return _buildStatusBadge(service.state);
-            },
-          ),
-        ],
-      ),
-      body: Consumer<TikTokLiveService>(
-        builder: (context, service, _) {
-          return Container(
+    final triggers = context.read<TriggerService>();
+    return VideoOverlay(
+      triggerService: triggers,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('📡 مراقبة البث'),
+          flexibleSpace: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [AppTheme.backgroundColor, Color(0xFF0D0D1A)],
+                colors: [Color(0xFF1A1A35), Colors.transparent],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
             ),
-            child: Column(
-              children: [
-                // الإحصائيات السريعة
-                _buildQuickStats(service),
-                const Divider(color: AppTheme.textMuted, height: 1),
-                // "الأوائل"
-                if (service.state == LiveConnectionState.connected)
-                  _buildFirstEvents(service),
-                // قائمة الأحداث
-                Expanded(
-                  child: service.events.isEmpty
-                      ? _buildEmptyState(service)
-                      : _buildEventList(service),
-                ),
-              ],
+          ),
+          actions: [
+            Consumer<TikTokLiveService>(
+              builder: (_, service, __) => _buildStatusBadge(service.state),
             ),
-          );
-        },
+          ],
+        ),
+        body: Consumer<TikTokLiveService>(
+          builder: (context, service, _) {
+            return Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0A0A1A), Color(0xFF0D0520)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Column(
+                children: [
+                  _buildQuickStats(service),
+                  if (service.state == LiveConnectionState.connected)
+                    _buildFirstEvents(service),
+                  Expanded(
+                    child: service.events.isEmpty
+                        ? _buildEmptyState(service)
+                        : _buildEventList(service),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -102,17 +111,20 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 8),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 10),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
         ],
       ),
@@ -121,17 +133,22 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
   Widget _buildQuickStats(TikTokLiveService service) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
       child: Column(
         children: [
-          // مدة البث
           if (service.streamStartTime != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.secondaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(color: AppTheme.secondaryColor.withValues(alpha: 0.3)),
+              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.timer, color: AppTheme.secondaryColor, size: 18),
+                  const Icon(Icons.timer_rounded, color: AppTheme.secondaryColor, size: 18),
                   const SizedBox(width: 6),
                   Text(
                     service.streamDuration,
@@ -147,11 +164,11 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
             ),
           Row(
             children: [
-              _buildStatItem('👁', '${service.viewerCount}', 'مشاهد'),
-              _buildStatItem('❤️', '${service.totalLikes}', 'لايك'),
-              _buildStatItem('💬', '${service.totalComments}', 'تعليق'),
-              _buildStatItem('🎁', '${service.totalGifts}', 'هدية'),
-              _buildStatItem('💎', '${service.totalDiamonds}', 'ماسة'),
+              _buildStatItem('👁', '${service.viewerCount}', 'مشاهد', AppTheme.secondaryColor),
+              _buildStatItem('❤️', '${service.totalLikes}', 'لايك', AppTheme.primaryColor),
+              _buildStatItem('💬', '${service.totalComments}', 'تعليق', AppTheme.accentPurple),
+              _buildStatItem('🎁', '${service.totalGifts}', 'هدية', AppTheme.accentGold),
+              _buildStatItem('💎', '${service.totalDiamonds}', 'ماسة', Colors.cyanAccent),
             ],
           ),
         ],
@@ -159,28 +176,29 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     );
   }
 
-  Widget _buildStatItem(String emoji, String value, String label) {
+  Widget _buildStatItem(String emoji, String value, String label, Color color) {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 3),
         padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: AppDecorations.glassCard(),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.12), color.withValues(alpha: 0.04)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.15)),
+        ),
         child: Column(
           children: [
             Text(emoji, style: const TextStyle(fontSize: 18)),
             const SizedBox(height: 4),
             Text(
               value,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            Text(
-              label,
-              style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
-            ),
+            Text(label, style: const TextStyle(color: AppTheme.textMuted, fontSize: 9)),
           ],
         ),
       ),
@@ -195,7 +213,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: [
           if (service.firstFollower != null)
@@ -214,16 +232,20 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 3),
         padding: const EdgeInsets.all(8),
-        decoration: AppDecorations.accentCard(color),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.2), color.withValues(alpha: 0.05)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
         child: Column(
           children: [
             Text(title, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 2),
-            Text(
-              name,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11),
-              overflow: TextOverflow.ellipsis,
-            ),
+            const SizedBox(height: 3),
+            Text(name, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11), overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -236,27 +258,46 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: AppTheme.errorColor, size: 60),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.error_outline, color: AppTheme.errorColor, size: 50),
+            ),
             const SizedBox(height: 16),
-            const Text('خطأ في الاتصال', style: TextStyle(color: AppTheme.errorColor, fontSize: 18)),
+            const Text('خطأ في الاتصال', style: TextStyle(color: AppTheme.errorColor, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(
-              service.errorMessage ?? '',
-              style: const TextStyle(color: AppTheme.textMuted, fontSize: 14),
-              textAlign: TextAlign.center,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                service.errorMessage ?? '',
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),
       );
     }
 
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.live_tv, color: AppTheme.textMuted, size: 60),
-          SizedBox(height: 16),
-          Text('في انتظار الأحداث...', style: TextStyle(color: AppTheme.textMuted, fontSize: 16)),
+          Container(
+            padding: const EdgeInsets.all(25),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.live_tv_rounded, color: AppTheme.textMuted, size: 50),
+          ),
+          const SizedBox(height: 16),
+          const Text('في انتظار الأحداث...', style: TextStyle(color: AppTheme.textMuted, fontSize: 16)),
+          const SizedBox(height: 6),
+          const Text('اتصل ببث لايف لبدء المراقبة', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
         ],
       ),
     );
@@ -264,57 +305,61 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
   Widget _buildEventList(TikTokLiveService service) {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       itemCount: service.events.length,
       itemBuilder: (context, index) {
         final event = service.events[index];
+        final eventColor = _getEventColor(event.type);
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: AppTheme.surfaceColor.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(10),
+            gradient: LinearGradient(
+              colors: [eventColor.withValues(alpha: 0.08), Colors.transparent],
+              begin: Alignment.centerRight,
+              end: Alignment.centerLeft,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: eventColor.withValues(alpha: 0.1)),
           ),
           child: Row(
             children: [
-              // الصورة
               CircleAvatar(
                 radius: 18,
-                backgroundColor: AppTheme.cardColor,
-                backgroundImage: event.profilePicUrl != null
-                    ? NetworkImage(event.profilePicUrl!)
-                    : null,
+                backgroundColor: eventColor.withValues(alpha: 0.15),
+                backgroundImage: event.profilePicUrl != null ? NetworkImage(event.profilePicUrl!) : null,
                 child: event.profilePicUrl == null
                     ? Text(event.icon, style: const TextStyle(fontSize: 16))
                     : null,
               ),
               const SizedBox(width: 10),
-              // المحتوى
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event.description,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 13,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                child: Text(
+                  event.description,
+                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // الوقت
               Text(
                 '${event.timestamp.hour.toString().padLeft(2, '0')}:${event.timestamp.minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  Color _getEventColor(String type) {
+    switch (type) {
+      case 'gift': return AppTheme.accentGold;
+      case 'like': return AppTheme.primaryColor;
+      case 'follow': return AppTheme.successColor;
+      case 'comment': return AppTheme.secondaryColor;
+      case 'share': return Colors.orangeAccent;
+      default: return AppTheme.textMuted;
+    }
   }
 }
