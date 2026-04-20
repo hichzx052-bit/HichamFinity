@@ -8,6 +8,7 @@ import '../services/trigger_service.dart';
 import '../utils/theme.dart';
 import '../utils/constants.dart';
 import '../widgets/video_overlay.dart';
+import '../services/background_service.dart';
 import 'live_monitor_screen.dart';
 import 'settings_screen.dart';
 import 'tts_settings_screen.dart';
@@ -77,6 +78,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final service = context.read<TikTokLiveService>();
     service.connect(username);
     _setupEventListeners();
+    
+    // تفعيل الخلفية — يبقى شغال
+    BackgroundServiceHelper.startKeepAlive();
 
     Navigator.push(
       context,
